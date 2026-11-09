@@ -71,17 +71,10 @@ cp "$ROOT/boot/init" "$IR/init"; chmod 755 "$IR/init"
 ( cd "$IR" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9 ) > "$WORK/boot/initramfs.cpio.gz"
 
 log "打包 boot.img"
-if ! command -v mkbootimg >/dev/null 2>&1; then
-  python3 -m pip install --quiet --break-system-packages mkbootimg 2>/dev/null \
-    || python3 -m pip install --quiet --user mkbootimg \
-    || die "装不上 mkbootimg"
-  export PATH="$HOME/.local/bin:$PATH"
-fi
-mkbootimg \
-  --kernel "$WORK/boot/kernel" \
+# 不用 pip 的 mkbootimg（runner 上 PyPI 不可达），改用纯 Python 复用上游头部。
+python3 "$ROOT/scripts/mk-bootimg.py" \
+  --orig "$WORK/boot/upstream-boot.img" \
   --ramdisk "$WORK/boot/initramfs.cpio.gz" \
-  --dtb "$WORK/boot/dtb" \
-  --header_version 2 --pagesize 4096 \
   --output "$OUT/boot-steamos-liuqin.img"
 
 ls -l "$OUT/boot-steamos-liuqin.img"
