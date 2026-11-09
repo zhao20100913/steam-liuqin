@@ -22,6 +22,15 @@ head -5 "$TREE/etc/passwd"; grep -E '^(wheel|sudo|video|render|input|audio|plugd
 sec "systemd 默认目标"
 readlink -f "$TREE/etc/systemd/system/default.target" 2>/dev/null || true
 
+sec "图形会话"
+ls "$TREE/usr/share/wayland-sessions" 2>/dev/null || echo 无 wayland-sessions
+ls "$TREE/usr/share/xsessions" 2>/dev/null || true
+grep -H '^Exec=' "$TREE/usr/share/wayland-sessions/"*.desktop 2>/dev/null | head -5 || true
+readlink -f "$TREE/etc/systemd/system/display-manager.service" 2>/dev/null || true
+for b in sddm startplasma-wayland greetd; do
+  [[ -e "$TREE/usr/bin/$b" ]] && echo "有 $b" || echo "无 $b"
+done
+
 sec "关键程序"
 for p in usr/bin/steam usr/bin/gamescope usr/bin/gamescope-session usr/bin/steamos-session-select \
          usr/bin/plasmashell usr/bin/gnome-shell usr/bin/fex usr/bin/box64 usr/bin/wine \
