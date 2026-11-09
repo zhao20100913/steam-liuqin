@@ -1,0 +1,79 @@
+#!/bin/busybox sh
+# boot/init —— 打进我们自己的 initramfs 的最小 init。
+#
+# 为什么不用上游 boot.img 的 initramfs：yzddmr6 的 init 对 rootfs 有 Ubuntu 专属
+# 契约验收（GNOME guard、snap admission、power-keyd、sensor-stack、systemd 指纹……），
+# SteamOS 树不可能满足。我们自己找 root、切根，只依赖 busybox。
+#
+# 根分区定位（与上游布局一致）：
+#   1. GPT 分区名 linux_root（sysfs uevent 里的 PARTNAME）
+#   2. 文件系统标签 LIUQIN_ROOT（PARTLABEL 缺失时的兜底）
+set -u
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+BB=/bin/busybox
+
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || mount -t tmpfs tmpfs /dev
+
+for d in /dev/pts /dev/shm /run /tmp /newroot; do mkdir -p $d; done
+mount -t devpts devpts /dev/pts 2>/dev/null || true
+
+say() { echo "[liuqin-steamos] $*"; }
+
+find_root_dev() {
+  # 先按 PARTNAME=linux_root
+  for u in /sys/class/block/*/uevent; do
+    [ -f "$u" ] || continue
+    if grep -qx 'PARTNAME=linux_root' "$u" 2>/dev/null; then
+      n=$(basename "$(dirname "$u")")
+      echo "/dev/$n"
+      return 0
+    fi
+  done
+  # 再按 LABEL=LIUQIN_ROOT
+  for d in /dev/mmcblk*p* /dev/sd*[0-9]* /dev/nvme*p*; do
+    [ -b "$d" ] || continue
+    if $BB blkid "$d" 2>/dev/null | grep -q 'LABEL="LIUQIN_ROOT"'; then
+      echo "$d"; return 0
+    fi
+  done
+  return 1
+}
+
+DEV=""
+i=0
+while [ $i -lt 30 ]; do
+  if DEV=$(find_root_dev); then break; fi
+  sleep 1; i=$((i+1))
+done
+
+if [ -z "$DEV" ]; then
+  say "找不到 linux_root 分区；20 秒后进 shell"
+  sleep 20
+  exec /bin/sh
+fi
+say "root: $DEV"
+
+# 可写挂载（systemd 要写 /var），最多试 10 次。
+MOUNTED=0
+i=0
+while [ $i -lt 10 ]; do
+  if mount "$DEV" /newroot 2>/dev/null; then MOUNTED=1; break; fi
+  i=$((i+1)); sleep 1
+done
+
+if [ "$MOUNTED" != 1 ]; then
+  say "挂载失败，进 shell（可手动 mount 后 exit）"
+  exec /bin/sh
+fi
+
+if [ ! -x /newroot/sbin/init ] && [ ! -x /newroot/usr/lib/systemd/systemd ]; then
+  say "rootfs 里没有 init；进 shell"
+  exec /bin/sh
+fi
+
+say "switch_root → /sbin/init"
+umount /proc /sys 2>/dev/null || true
+exec switch_root /newroot /sbin/init
