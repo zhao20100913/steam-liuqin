@@ -87,6 +87,13 @@ if [[ -d "$WORK/liuqin/modules" ]]; then
   log "注入内核模块"
   mkdir -p "$TREE/usr/lib/modules"
   rsync -aHA --numeric-ids "$WORK/liuqin/modules/." "$TREE/usr/lib/modules/"
+  # 只留与 boot.img 内核一致的模块目录；Frame 自带的 7.0.0-14-generic 在 liuqin 上无用，
+  # 留着会让 depmod/固件查找指向错误内核。
+  for d in "$TREE/usr/lib/modules"/*/; do
+    [[ -d "$d" ]] || continue
+    keep="$WORK/liuqin/modules/$(basename "$d")"
+    [[ -e "$keep" ]] || { warn "删除不匹配的模块目录 $(basename "$d")"; rm -rf "$d"; }
+  done
 else
   warn "没有 $WORK/liuqin/modules —— 树里将没有 liuqin 模块（Wi-Fi/触控/音频多半起不来）"
 fi
