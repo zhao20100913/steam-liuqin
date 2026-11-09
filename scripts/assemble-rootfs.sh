@@ -28,18 +28,31 @@ mount -o loop,ro,subvolid=5 "$ROOTFS" "$MNT" || die "挂载 btrfs subvolid=5 失
 trap 'umount "$MNT" 2>/dev/null || true' EXIT
 
 log "根目录内容:"; ls -1 "$MNT" | head -30
+log "os-release 探针:"
+ls -l "$MNT/usr/lib/os-release" "$MNT/etc/os-release" 2>&1 | sed 's/^/  /' || true
 
-# 定位根子卷：能提供 /usr/lib/os-release 的那一个。
+# 定位根子卷。Frame 的 rootfs-A 在 subvolid=5 下既可能是“顶层就是根”，
+# 也可能包一层 @rootfs；判据放宽到「etc 目录 + usr 目录」，因为不同快照里
+# os-release 可能是符号链接甚至被裁掉。
+is_root_tree() { [[ -d "$1/etc" && -d "$1/usr" ]]; }
+
 ROOT_SUBVOL=""
-for cand in "" @ rootfs @rootfs @steamos; do
-  if [[ -f "$MNT/$cand/usr/lib/os-release" ]]; then ROOT_SUBVOL="$cand"; break; fi
-done
-[[ -n "$ROOT_SUBVOL" ]] || die "找不到根子卷（没有任何候选含 usr/lib/os-release）"
+if is_root_tree "$MNT"; then
+  ROOT_SUBVOL=""
+else
+  for d in "$MNT"/*/; do
+    [[ -d "$d" ]] || continue
+    if is_root_tree "${d%/}"; then ROOT_SUBVOL="$(basename "$d")"; break; fi
+  done
+fi
+[[ -n "$ROOT_SUBVOL" || -d "$MNT/etc" ]] || die "找不到根子卷（顶层与一级子目录都没有 etc+usr）"
 log "根子卷: '${ROOT_SUBVOL:-<顶层>}'"
 
 # 平级子卷：@var→var、@home→home（存在则合并）。
+# 顶层就是根时，var/home 已经在根树里，不再单独合并（否则 rsync 两遍）。
 EXTRAS=()
 for cand in @var var @home home; do
+  [[ -n "$ROOT_SUBVOL" ]] || break
   if [[ -d "$MNT/$cand" && "$cand" != "$ROOT_SUBVOL" ]]; then
     case "$cand" in
       @var|var) EXTRAS+=("@var:var") ;;
