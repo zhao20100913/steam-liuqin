@@ -15,7 +15,7 @@ mkdir -p "$OUT"
 
 rm -f "$OUT"/steamos-liuqin-rootfs.tar.gz*
 log "打包（gzip -1，保留 xattr/ACL/硬链接/属主）"
-tar -C "$TREE" --xattrs --acls --numeric-owner -cf - . \
+tar -C "$TREE" --xattrs --xattrs-exclude='btrfs.*' --acls --numeric-owner -cf - . \
   | gzip -1 > "$OUT/steamos-liuqin-rootfs.tar.gz"
 
 SIZE="$(stat -c %s "$OUT/steamos-liuqin-rootfs.tar.gz")"
