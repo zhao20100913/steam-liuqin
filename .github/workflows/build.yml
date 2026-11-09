@@ -1,0 +1,111 @@
+name: build-steamos-liuqin
+
+# 在 ARM64 云端把 Steam Frame 的 SteamOS 用户态 + liuqin 内核模块/固件打成
+# rootfs.tar.gz 分卷，供小米平板 6 Pro（liuqin）两步安装使用。
+#
+# 前置：仓库必须 public，否则拿不到 ubuntu-24.04-arm runner。
+
+on:
+  workflow_dispatch:
+    inputs:
+      frame_url:
+        description: "Steam Frame 恢复镜像 URL"
+        required: false
+        default: "https://steamdeck-images.steamos.cloud/recovery/steamframe-oobe-repair-20260922.5153644-0.3.0.img.bz2"
+      runtime_base:
+        description: "上游 Ubuntu v0.6.0 release 资产前缀（取内核模块/固件）"
+        required: false
+        default: "https://github.com/yzddmr6/xiaomipad-6pro-mainline/releases/download/v0.6.0"
+      enable_ssh:
+        description: "rootfs 里默认启用 SSH（1=开，0=关）"
+        required: false
+        default: "1"
+      debug_boot:
+        description: "首启停在 multi-user.target（1=调试，0=直接 graphical）"
+        required: false
+        default: "1"
+      release_tag:
+        description: "非空则把分卷发布为 Release（如 v0.1.0）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-steamos-liuqin
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    env:
+      WORK: /mnt/steamos-work
+      OUT: /mnt/steamos-work/out
+      FRAME_URL: ${{ inputs.frame_url }}
+      RUNTIME_BASE: ${{ inputs.runtime_base }}
+      ENABLE_SSH: ${{ inputs.enable_ssh }}
+      DEBUG_BOOT: ${{ inputs.debug_boot }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 环境与磁盘
+        run: |
+          set -euxo pipefail
+          arch=$(uname -m); echo "arch=$arch"
+          [ "$arch" = aarch64 ] || { echo "需要 arm64 runner"; exit 1; }
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rsync btrfs-progs xz-utils python3 python3-pip cpio gzip curl
+          df -h / /mnt || true
+          sudo mkdir -p "$WORK" "$OUT"
+          sudo chown -R "$(id -u):$(id -g)" "$WORK"
+
+      - name: 取 liuqin 内核模块/固件（上游 v0.6.0 底包）
+        run: bash scripts/fetch-runtime.sh
+
+      - name: 构建 liuqin boot.img（上游内核/dtb + 我们的 initramfs）
+        run: bash scripts/make-boot-img.sh
+
+      - name: 取 Steam Frame rootfs-A
+        run: bash scripts/fetch-frame.sh
+
+      - name: 铺 SteamOS 树
+        run: sudo -E bash scripts/assemble-rootfs.sh
+
+      - name: 勘察（第一轮先拿事实）
+        run: sudo -E bash scripts/probe-rootfs.sh
+
+      - name: chroot 配置
+        run: sudo -E bash scripts/configure-rootfs.sh
+
+      - name: 打包分卷
+        run: sudo -E bash scripts/pack-rootfs.sh && sudo chown -R "$(id -u):$(id -g)" "$OUT"
+
+      - name: 产物清单
+        run: |
+          ls -l "$OUT"
+          sha256sum "$OUT"/*.part-* > "$OUT/parts.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: steamos-liuqin-rootfs
+          path: |
+            ${{ env.OUT }}/steamos-liuqin-rootfs.tar.gz.part-*
+            ${{ env.OUT }}/boot-steamos-liuqin.img
+            ${{ env.OUT }}/*.sha256
+          compression-level: 0
+          retention-days: 14
+
+      - name: 发布 Release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ inputs.release_tag }}" \
+            "$OUT"/steamos-liuqin-rootfs.tar.gz.part-* "$OUT"/steamos-liuqin-rootfs.tar.gz.sha256 \
+            --title "SteamOS liuqin ${{ inputs.release_tag }}" \
+            --notes "SteamOS（Steam Frame ARM64 用户态）+ liuqin 6.17 模块/固件的 rootfs 分卷。安装见 README。" \
+            || gh release upload "${{ inputs.release_tag }}" "$OUT"/*.part-* "$OUT"/*.sha256 --clobber
