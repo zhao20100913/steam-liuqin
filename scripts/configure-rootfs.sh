@@ -51,7 +51,16 @@ else
   echo "UID 1000 已存在: $(getent passwd 1000 | cut -d: -f1)"
 fi
 # 离线停用：删 wants 软链并 mask（不依赖 dbus）
-for unit in steamos-update.service atomupd.service atomupd-daemon.service rauc.service bootc-fetch-apply-updates.service steamos-manager.service; do
+# 前一组是 Valve 更新链（依赖 Valve 服务器/只读根），后一组是 Steam Frame 的
+# VR/FPGA/风扇/电源监测/adb 等专用服务——liuqin 上没有这些硬件，留着只会刷失败日志。
+for unit in steamos-update.service atomupd.service atomupd-daemon.service rauc.service \
+            bootc-fetch-apply-updates.service steamos-manager.service steamos-boot.service \
+            deckard-audio-setup.service deckard-boot-images.service deckard-charger.service \
+            deckard-fan-control.service deckard-fpga-resume.service deckard-fpga.service \
+            deckard-led-control.service deckard-power-monitor.service deckard-typec-logger.service \
+            dsp_service.service steamvr-program-ble.service steamvr-set-kernel-thread-priorities.service \
+            steamvr-v4l2loopback.service gpu-trace.service iris-driver-rebind.service \
+            setubootenv.service adbd.service adbd-pre.service adbd-post.service usb-gadget.service; do
   find /etc/systemd/system -maxdepth 3 -type l -name "$unit" -delete 2>/dev/null || true
   ln -sfn /dev/null "/etc/systemd/system/$unit" 2>/dev/null || true
 done
