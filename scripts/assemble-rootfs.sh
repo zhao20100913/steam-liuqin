@@ -7,7 +7,8 @@
 # 输出：$WORK/tree（SteamOS 用户态 + liuqin 内核模块/固件）
 #
 # btrfs 布局按 zhao 的脚本处理：subvolid=5 挂载才能看到根子卷与 @var/@home 平级子卷；
-# 根子卷内容 rsync 进树，@var→/var、@home→/home 合并进去。
+# 根子卷内容 rsync 进树（不用 -X：ubuntu 24.04 的 rsync 3.2.7 没有 --xattrs-exclude，
+# 而 Frame 树里全是 btrfs.* xattr，写到 ext4 上会 code 23；首启不需要 capability xattr），@var→/var、@home→/home 合并进去。
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
@@ -63,14 +64,14 @@ done
 
 rm -rf "$TREE"; mkdir -p "$TREE"
 log "rsync 根子卷 → $TREE（-aHAX，保留 xattr/ACL/硬链接）"
-rsync -aHAX --xattrs-exclude='btrfs.*' --numeric-ids "$MNT/$ROOT_SUBVOL/." "$TREE/"
+rsync -aHA --numeric-ids "$MNT/$ROOT_SUBVOL/." "$TREE/"
 
 for pair in "${EXTRAS[@]}"; do
   src="$MNT/${pair%%:*}"; dst="$TREE/${pair##*:}"
   [[ -d "$src" ]] || continue
   log "合并子卷 ${pair%%:*} → ${pair##*:}"
   mkdir -p "$dst"
-  rsync -aHAX --xattrs-exclude='btrfs.*' --numeric-ids "$src/." "$dst/"
+  rsync -aHA --numeric-ids "$src/." "$dst/"
 done
 
 umount "$MNT"
@@ -85,14 +86,14 @@ rm -f "$TREE/etc/fstab"
 if [[ -d "$WORK/liuqin/modules" ]]; then
   log "注入内核模块"
   mkdir -p "$TREE/usr/lib/modules"
-  rsync -aHAX --xattrs-exclude='btrfs.*' --numeric-ids "$WORK/liuqin/modules/." "$TREE/usr/lib/modules/"
+  rsync -aHA --numeric-ids "$WORK/liuqin/modules/." "$TREE/usr/lib/modules/"
 else
   warn "没有 $WORK/liuqin/modules —— 树里将没有 liuqin 模块（Wi-Fi/触控/音频多半起不来）"
 fi
 if [[ -d "$WORK/liuqin/firmware" ]]; then
   log "注入固件"
   mkdir -p "$TREE/lib/firmware"
-  rsync -aHAX --xattrs-exclude='btrfs.*' --numeric-ids "$WORK/liuqin/firmware/." "$TREE/lib/firmware/"
+  rsync -aHA --numeric-ids "$WORK/liuqin/firmware/." "$TREE/lib/firmware/"
 else
   warn "没有 $WORK/liuqin/firmware"
 fi
