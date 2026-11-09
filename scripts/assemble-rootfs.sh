@@ -63,14 +63,14 @@ done
 
 rm -rf "$TREE"; mkdir -p "$TREE"
 log "rsync 根子卷 → $TREE（-aHAX，保留 xattr/ACL/硬链接）"
-rsync -aHAX --numeric-ids "$MNT/$ROOT_SUBVOL/." "$TREE/"
+rsync -aHAX --xattrs-exclude='btrfs.*' --numeric-ids "$MNT/$ROOT_SUBVOL/." "$TREE/"
 
 for pair in "${EXTRAS[@]}"; do
   src="$MNT/${pair%%:*}"; dst="$TREE/${pair##*:}"
   [[ -d "$src" ]] || continue
   log "合并子卷 ${pair%%:*} → ${pair##*:}"
   mkdir -p "$dst"
-  rsync -aHAX --numeric-ids "$src/." "$dst/"
+  rsync -aHAX --xattrs-exclude='btrfs.*' --numeric-ids "$src/." "$dst/"
 done
 
 umount "$MNT"
@@ -85,14 +85,14 @@ rm -f "$TREE/etc/fstab"
 if [[ -d "$WORK/liuqin/modules" ]]; then
   log "注入内核模块"
   mkdir -p "$TREE/usr/lib/modules"
-  rsync -aHAX --numeric-ids "$WORK/liuqin/modules/." "$TREE/usr/lib/modules/"
+  rsync -aHAX --xattrs-exclude='btrfs.*' --numeric-ids "$WORK/liuqin/modules/." "$TREE/usr/lib/modules/"
 else
   warn "没有 $WORK/liuqin/modules —— 树里将没有 liuqin 模块（Wi-Fi/触控/音频多半起不来）"
 fi
 if [[ -d "$WORK/liuqin/firmware" ]]; then
   log "注入固件"
   mkdir -p "$TREE/lib/firmware"
-  rsync -aHAX --numeric-ids "$WORK/liuqin/firmware/." "$TREE/lib/firmware/"
+  rsync -aHAX --xattrs-exclude='btrfs.*' --numeric-ids "$WORK/liuqin/firmware/." "$TREE/lib/firmware/"
 else
   warn "没有 $WORK/liuqin/firmware"
 fi
