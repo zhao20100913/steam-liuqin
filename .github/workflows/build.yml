@@ -105,7 +105,10 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "${{ inputs.release_tag }}" \
+            "$OUT"/boot-steamos-liuqin.img "$OUT"/boot-steamos-liuqin.img.sha256 \
             "$OUT"/steamos-liuqin-rootfs.tar.gz.part-* "$OUT"/steamos-liuqin-rootfs.tar.gz.sha256 \
             --title "SteamOS liuqin ${{ inputs.release_tag }}" \
-            --notes "SteamOS（Steam Frame ARM64 用户态）+ liuqin 6.17 模块/固件的 rootfs 分卷。安装见 README。" \
-            || gh release upload "${{ inputs.release_tag }}" "$OUT"/*.part-* "$OUT"/*.sha256 --clobber
+            --notes "SteamOS（Steam Frame ARM64 用户态）+ liuqin 6.17 模块/固件的 boot.img 与 rootfs 分卷。安装见 docs/07-安装手册.md。" \
+            || gh release upload "${{ inputs.release_tag }}" \
+                 "$OUT"/boot-steamos-liuqin.img "$OUT"/boot-steamos-liuqin.img.sha256 \
+                 "$OUT"/*.part-* "$OUT"/*.sha256 --clobber
