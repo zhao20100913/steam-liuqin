@@ -36,12 +36,14 @@ START="${START//[^0-9]/}"; SECTORS="${SECTORS//[^0-9]/}"
 log "rootfs-A: start_lba=$START sectors=$SECTORS（$((SECTORS / 2048)) MiB）"
 
 log "第 2 遍：流式切出 rootfs-A"
-set +e
+# 注意：这里必须同时关掉 pipefail —— dd 读够 count 就先退出，bunzip2 会拿到
+# SIGPIPE（exit 1/141），那是正常现象，不能当成切分区失败。只看 dd 自己的状态。
+set +e +o pipefail
 dload "$FRAME_URL" | bunzip2 -c \
   | dd of="$ROOTFS" bs=512 skip="$START" count="$SECTORS" conv=sparse status=none
-RC=$?
-set -e
-[[ "$RC" -eq 0 || "$RC" -eq 141 ]] || die "切分区失败（rc=$RC, sectors=$SECTORS）"
+RC=${PIPESTATUS[2]}
+set -e -o pipefail
+[[ "$RC" -eq 0 ]] || die "切分区失败（dd rc=$RC, start=$START, sectors=$SECTORS）"
 
 TSIZE=$((SECTORS * 512))
 ACTUAL="$(stat -c %s "$ROOTFS")"
